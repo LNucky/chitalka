@@ -29,7 +29,7 @@ summary{cursor:pointer}
 #reader{height:100vh;height:100dvh;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr) auto;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
 .toolbar{display:flex;align-items:center;gap:.45rem;padding:.5rem;border-bottom:1px solid var(--line)}
 .toolbar button{flex:none;min-width:44px}
-footer.toolbar{justify-content:space-between;border-bottom:0;border-top:1px solid var(--line)}
+footer.toolbar{position:relative;justify-content:space-between;border-bottom:0;border-top:1px solid var(--line)}
 #title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:600 1rem Georgia,serif}
 #pages,foliate-view{width:100%;height:100%;min-height:0;min-width:0;display:block}
 dialog{width:min(92%,28rem);max-height:80dvh;border:1px solid var(--line);border-radius:16px;background:var(--bg);color:var(--ink)}
@@ -38,3 +38,14 @@ dialog header{display:flex;align-items:center;justify-content:space-between;gap:
 dialog h2{margin:0}
 #chapters button{display:block;width:100%;text-align:left;margin:.3rem 0}
 #prefs label,#prefs input,#prefs select{display:block;width:100%;margin:.55rem 0}
+
+.reader-progress{display:grid;justify-items:center;flex:1;min-width:0;text-align:center}
+#reading-progress{display:grid;gap:.2rem;width:min(100%,11rem);font-variant-numeric:tabular-nums}
+#progress-bar{width:100%;height:.35rem;accent-color:var(--accent)}
+#return-link{max-width:100%;min-width:0;color:var(--accent)}
+#milestone{color:var(--accent);font-size:.82rem;font-weight:650}
+#milestone:not(:empty){position:absolute;bottom:100%;left:50%;translate:-50% 0;width:max-content;max-width:90%;padding:.4rem .75rem;border:1px solid var(--line);border-radius:12px;background:var(--card);pointer-events:none}
+@media(prefers-reduced-motion:no-preference){
+  #milestone:not(:empty){animation:milestone-in .25s ease-out}
+}
+@keyframes milestone-in{from{opacity:0;transform:translateY(4px)}}

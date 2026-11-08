@@ -134,7 +134,10 @@ function showChapters(items, depth = 0) {
       button.style.paddingInlineStart = Math.min(depth, 5) * .7 + .75 + 'rem'
       button.onclick = () => {
         $('toc').close()
-        void navigate(() => active.view.goTo(item.href))
+        void navigate(() => {
+          setLinkReturn(active, null)
+          return active.view.goTo(item.href)
+        })
       }
       $('chapters').append(button)
     }
@@ -142,11 +145,75 @@ function showChapters(items, depth = 0) {
   }
 }
 
+function setLinkReturn(reader, linkReturn) {
+  reader.linkReturn = linkReturn
+  $('return-link').hidden = !linkReturn
+  $('reading-progress').hidden = Boolean(linkReturn)
+}
+
+async function returnToText(reader) {
+  const origin = reader.linkReturn
+  if (!origin) return
+  setLinkReturn(reader, null)
+  if (!await reader.view.goTo(origin.cfi)) setLinkReturn(reader, origin)
+}
+
+function followBookLink(reader, event) {
+  const { a, href } = event.detail
+  const { view, linkReturn } = reader
+  const type = a.getAttributeNS('http://www.idpf.org/2007/ops', 'type') ?? ''
+  const role = a.getAttribute('role')
+  const target = view.resolveNavigation(href)
+  if (linkReturn && (role === 'doc-backlink' || /\b(backlink|backref)\b/.test(type)
+    || (linkReturn.anchorId && target?.index === linkReturn.section && href.split('#').at(-1) === linkReturn.anchorId))) {
+    event.preventDefault()
+    void navigate(() => returnToText(reader))
+    return
+  }
+  const location = view.lastLocation
+  if (!Number.isInteger(target?.index) || !reader.book.sections[target.index] || !location?.cfi) return
+  event.preventDefault()
+  void navigate(async () => {
+    const isNote = role === 'doc-noteref' || /\bnoteref\b/.test(type)
+      || reader.book.sections[target.index].linear === 'no'
+    setLinkReturn(reader, linkReturn ?? {
+      cfi: location.cfi, section: location.section?.current, anchorId: a.id, isNote,
+    })
+    $('milestone').textContent = ''
+    if (!await view.goTo(href)) setLinkReturn(reader, linkReturn)
+  })
+}
+
+function updateReadingProgress(reader, detail) {
+  if (reader.linkReturn?.isNote) return
+  const fraction = Number.isFinite(detail.fraction) ? detail.fraction : 0
+  const value = percent(fraction >= 1 - 1e-9 ? 1 : fraction)
+  $('position').value = value + '%'
+  $('progress-bar').value = value
+
+  const highest = Math.max(reader.highest, value)
+  const milestone = Math.floor(highest / 25) * 25
+  const paged = reader.turning || detail.reason === 'page' || detail.reason === 'snap'
+  $('milestone').textContent = paged && !reader.linkReturn && milestone > reader.highest
+    ? (milestone === 100 ? '✦ Ты дошёл до конца книги' : '✦ Уже ' + milestone + '% книги')
+    : ''
+  reader.highest = highest
+
+  if (!detail.cfi) return
+  void saveProgress([{ id: reader.id, cfi: detail.cfi, fraction, highest, updatedAt: Date.now() }]).catch(() => {
+    if (active === reader) $('position').value = 'Прогресс не сохранён'
+  })
+}
+
 async function openBook(record, parsed) {
   const previous = await get('progress', record.id)
   const book = parsed ?? await parseBook(new File([record.blob], record.name))
   const view = document.createElement('foliate-view')
-  active = { id: record.id, view, book, navigating: true }
+  const reader = { id: record.id, view, book, navigating: true, highest: previous?.highest ?? percent(previous?.fraction ?? 0) }
+  active = reader
+  setLinkReturn(reader, null)
+  $('milestone').textContent = ''
+  $('progress-bar').value = 0
   $('title').textContent = record.title
   $('position').value = 'Открываю…'
   $('shelf').hidden = true
@@ -161,14 +228,8 @@ async function openBook(record, parsed) {
     applyPrefs()
     view.addEventListener('external-link', event => event.preventDefault())
     view.addEventListener('load', ({ detail }) => detail.doc.addEventListener('keydown', keys))
-    view.addEventListener('relocate', ({ detail }) => {
-      const fraction = Number.isFinite(detail.fraction) ? detail.fraction : 0
-      $('position').value = percent(fraction) + '%'
-      if (!detail.cfi) return
-      void saveProgress([{ id: record.id, cfi: detail.cfi, fraction, updatedAt: Date.now() }]).catch(() => {
-        if (active?.view === view) $('position').value = 'Прогресс не сохранён'
-      })
-    })
+    view.addEventListener('link', event => followBookLink(reader, event))
+    view.addEventListener('relocate', ({ detail }) => updateReadingProgress(reader, detail))
     $('chapters').replaceChildren()
     showChapters(book.toc)
     $('contents').disabled = !$('chapters').children.length
@@ -217,11 +278,23 @@ async function navigate(action) {
   } finally { current.navigating = false }
 }
 
+function turnPage(direction) {
+  const reader = active
+  return navigate(async () => {
+    reader.turning = true
+    try {
+      await (direction === 'left' ? reader.view.goLeft() : reader.view.goRight())
+    } finally {
+      reader.turning = false
+    }
+  })
+}
+
 function keys(event) {
   if (!active || $('toc').open || $('prefs').open || event.altKey || event.ctrlKey || event.metaKey) return
   if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
     event.preventDefault()
-    void navigate(() => event.key === 'ArrowLeft' ? active.view.goLeft() : active.view.goRight())
+    void turnPage(event.key === 'ArrowLeft' ? 'left' : 'right')
   }
 }
 
@@ -241,7 +314,8 @@ async function importProgress(file) {
   if (data?.version !== 1 || !Array.isArray(data.progress) || data.progress.some(item =>
     !item || typeof item.id !== 'string' || !/^[a-f0-9]{64}$/.test(item.id) ||
     typeof item.cfi !== 'string' || !item.cfi.startsWith('epubcfi(') || !item.cfi.endsWith(')') ||
-    !Number.isFinite(item.fraction) || !Number.isFinite(item.updatedAt))) {
+    !Number.isFinite(item.fraction) || !Number.isFinite(item.updatedAt) ||
+    (item.highest !== undefined && (!Number.isInteger(item.highest) || item.highest < 0 || item.highest > 100)))) {
     throw new Error('Выбери JSON, экспортированный из Читалки.')
   }
   await saveProgress(data.progress)
@@ -261,8 +335,9 @@ $('back').onclick = () => task(async () => {
   await renderShelf()
   $('add').focus()
 })
-$('prev').onclick = () => navigate(() => active.view.goLeft())
-$('next').onclick = () => navigate(() => active.view.goRight())
+$('prev').onclick = () => turnPage('left')
+$('next').onclick = () => turnPage('right')
+$('return-link').onclick = () => navigate(() => returnToText(active))
 $('contents').onclick = () => $('toc').showModal()
 $('settings').onclick = () => $('prefs').showModal()
 $('size').onchange = updatePrefs

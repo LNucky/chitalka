@@ -38,7 +38,14 @@
   <div id="pages"></div>
   <footer class="toolbar">
     <button id="prev" aria-label="Предыдущая страница">←</button>
-    <output id="position"></output>
+    <div class="reader-progress">
+      <button id="return-link" hidden>↩ К месту в тексте</button>
+      <div id="reading-progress">
+        <output id="position"></output>
+        <progress id="progress-bar" max="100" value="0" aria-label="Прогресс книги"></progress>
+      </div>
+      <span id="milestone" role="status"></span>
+    </div>
     <button id="next" aria-label="Следующая страница">→</button>
   </footer>
 </section>
