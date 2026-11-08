@@ -240,7 +240,7 @@ async function openBook(record, parsed) {
     await view.init({ lastLocation: previous?.cfi })
     active.navigating = false
     status('')
-    $('back').focus()
+    $('reader').focus({ preventScroll: true })
   } catch (error) {
     closeBook()
     throw error
@@ -354,6 +354,9 @@ $('progress-file').onchange = event => {
   event.target.value = ''
   if (file) void task(() => importProgress(file))
 }
+document.querySelector('#reader > header').addEventListener('touchmove', event => {
+  if (event.touches.length === 1 && event.cancelable) event.preventDefault()
+}, { passive: false })
 document.addEventListener('keydown', keys)
 applyPrefs()
 void task(renderShelf)
