@@ -1,0 +1,280 @@
+import { makeBook } from './vendor/foliate/view.js'
+import { all, get, put, removeBook, saveProgress } from './storage.js'
+
+const $ = id => document.getElementById(id)
+const themes = { paper: ['#f7f4eb', '#242a25'], light: ['#ffffff', '#242a25'], dark: ['#191d1a', '#ecefe9'] }
+let prefs = { size: 21, theme: 'paper' }
+try {
+  const stored = JSON.parse(localStorage.getItem('chitalka-prefs') ?? '{}')
+  if (stored && Number.isInteger(stored.size) && stored.size >= 16 && stored.size <= 34) prefs.size = stored.size
+  if (stored && Object.hasOwn(themes, stored.theme)) prefs.theme = stored.theme
+} catch { /* Use defaults if preferences are unavailable. */ }
+
+let active
+const status = message => { $('status').textContent = message }
+const percent = fraction => Math.floor(100 * Math.min(1, Math.max(0, fraction)))
+const text = value => typeof value === 'string' ? value : Object.values(value ?? {}).find(v => typeof v === 'string')
+const authors = value => [value].flat().map(v => text(v?.name ?? v)).filter(Boolean).join(', ')
+
+function applyPrefs() {
+  const [background, color] = themes[prefs.theme]
+  document.documentElement.dataset.theme = prefs.theme
+  document.querySelector('meta[name=theme-color]').content = background
+  $('size').value = prefs.size
+  $('size-value').value = prefs.size + ' px'
+  $('theme').value = prefs.theme
+  active?.view.renderer?.setStyles?.(`
+    :root { color-scheme: ${prefs.theme === 'dark' ? 'dark' : 'light'}; }
+    html, body { background: ${background} !important; color: ${color} !important; }
+    body { font-family: Georgia, serif !important; font-size: ${prefs.size}px !important; line-height: 1.55 !important; }
+    p, li, blockquote { color: inherit !important; font-size: inherit !important; line-height: inherit !important; }
+    a { color: inherit !important; }
+  `)
+}
+
+function updatePrefs() {
+  prefs = { size: Number($('size').value), theme: $('theme').value }
+  try { localStorage.setItem('chitalka-prefs', JSON.stringify(prefs)) } catch { /* Reading still works. */ }
+  applyPrefs()
+}
+
+async function renderShelf() {
+  const [books, progress] = await Promise.all([all('books'), all('progress')])
+  const positions = new Map(progress.map(item => [item.id, item]))
+  books.sort((a, b) => (positions.get(b.id)?.updatedAt ?? b.addedAt) - (positions.get(a.id)?.updatedAt ?? a.addedAt))
+  $('empty').hidden = books.length > 0
+  $('books').replaceChildren(...books.map(book => {
+    const li = document.createElement('li')
+    const open = document.createElement('button')
+    const title = document.createElement('strong')
+    const meta = document.createElement('small')
+    const position = positions.get(book.id)
+    open.className = 'book'
+    title.textContent = book.title
+    meta.textContent = [book.author, position ? 'Прочитано ' + percent(position.fraction) + '%' : 'Начать чтение'].filter(Boolean).join(' · ')
+    open.append(title, meta)
+    open.onclick = () => task(() => openBook(book))
+    const remove = document.createElement('button')
+    remove.className = 'delete'
+    remove.textContent = '×'
+    remove.setAttribute('aria-label', 'Удалить «' + book.title + '»')
+    remove.onclick = () => task(async () => {
+      if (!confirm('Удалить «' + book.title + '» и её прогресс с этого устройства?')) return
+      await removeBook(book.id)
+      await renderShelf()
+    })
+    li.append(open, remove)
+    return li
+  }))
+}
+
+async function parseBook(file) {
+  const book = await makeBook(file)
+  if (!book.sections?.length || !book.sections.some(section => section.linear !== 'no')) {
+    book.destroy?.()
+    throw new Error('В книге нет доступного текста.')
+  }
+  return book
+}
+
+async function normalizeFile(file) {
+  const name = file.name.toLowerCase()
+  if (!/\.(epub|fb2|zip)$/.test(name)) throw new Error('Выбери EPUB, FB2 или FB2.ZIP.')
+  if (file.size > 64 * 1024 * 1024) throw new Error('Размер файла превышает 64 МБ.')
+  if (!name.endsWith('.zip') && !name.endsWith('.epub')) return new File([file], name)
+  const { configure, ZipReader, BlobReader } = await import('./vendor/foliate/vendor/zip.js')
+  configure({ useWebWorkers: false })
+  const zip = new ZipReader(new BlobReader(file))
+  try {
+    const entries = await zip.getEntries()
+    const files = entries.filter(entry => !entry.directory)
+    if (files.some(entry => entry.encrypted) || files.reduce((size, entry) => size + entry.uncompressedSize, 0) > 128 * 1024 * 1024) {
+      throw new Error('Архив защищён паролем или слишком большой после распаковки.')
+    }
+    if (name.endsWith('.epub')) {
+      if (!files.some(entry => entry.filename === 'META-INF/container.xml')) throw new Error('Файл не похож на EPUB.')
+      return new File([file], name)
+    }
+    const fb2 = files.filter(entry => /\.fb2$/i.test(entry.filename) && !entry.filename.startsWith('__MACOSX/'))
+    if (fb2.length !== 1) throw new Error('В ZIP-архиве должен быть ровно один файл FB2.')
+    const { BlobWriter } = await import('./vendor/foliate/vendor/zip.js')
+    return new File([await fb2[0].getData(new BlobWriter())], name.replace(/(?:\.fb2)?\.zip$/, '.fb2'))
+  } finally {
+    await zip.close()
+  }
+}
+
+async function importBook(file) {
+  status('Открываю книгу…')
+  const normalized = await normalizeFile(file)
+  const digest = await crypto.subtle.digest('SHA-256', await normalized.arrayBuffer())
+  const id = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')
+  const existing = await get('books', id)
+  if (existing) return openBook(existing)
+  const book = await parseBook(normalized)
+  const record = {
+    id, blob: normalized, name: normalized.name, addedAt: Date.now(),
+    title: text(book.metadata?.title) || file.name, author: authors(book.metadata?.author),
+  }
+  try {
+    await openBook(record, book)
+    await put('books', record)
+  } catch (error) {
+    if (active?.id === id) closeBook()
+    else book.destroy?.()
+    throw error
+  }
+}
+
+function showChapters(items, depth = 0) {
+  for (const item of items ?? []) {
+    if (item.href) {
+      const button = document.createElement('button')
+      button.textContent = item.label || 'Раздел'
+      button.style.paddingInlineStart = Math.min(depth, 5) * .7 + .75 + 'rem'
+      button.onclick = () => {
+        $('toc').close()
+        void navigate(() => active.view.goTo(item.href))
+      }
+      $('chapters').append(button)
+    }
+    showChapters(item.subitems, depth + 1)
+  }
+}
+
+async function openBook(record, parsed) {
+  const previous = await get('progress', record.id)
+  const book = parsed ?? await parseBook(new File([record.blob], record.name))
+  const view = document.createElement('foliate-view')
+  active = { id: record.id, view, book, navigating: true }
+  $('title').textContent = record.title
+  $('position').value = 'Открываю…'
+  $('shelf').hidden = true
+  $('reader').hidden = false
+  $('pages').replaceChildren(view)
+  try {
+    book.transformTarget?.addEventListener('load', event => {
+      if (event.detail.isScript) event.detail.allow = false
+    })
+    await view.open(book)
+    view.renderer.setAttribute('max-column-count', '1')
+    applyPrefs()
+    view.addEventListener('external-link', event => event.preventDefault())
+    view.addEventListener('load', ({ detail }) => detail.doc.addEventListener('keydown', keys))
+    view.addEventListener('relocate', ({ detail }) => {
+      const fraction = Number.isFinite(detail.fraction) ? detail.fraction : 0
+      $('position').value = percent(fraction) + '%'
+      if (!detail.cfi) return
+      void saveProgress([{ id: record.id, cfi: detail.cfi, fraction, updatedAt: Date.now() }]).catch(() => {
+        if (active?.view === view) $('position').value = 'Прогресс не сохранён'
+      })
+    })
+    $('chapters').replaceChildren()
+    showChapters(book.toc)
+    $('contents').disabled = !$('chapters').children.length
+    await view.init({ lastLocation: previous?.cfi })
+    active.navigating = false
+    status('')
+    $('back').focus()
+  } catch (error) {
+    closeBook()
+    throw error
+  }
+}
+
+function closeBook() {
+  $('toc').close()
+  $('prefs').close()
+  active?.view.close()
+  active?.book.destroy?.()
+  active = null
+  $('pages').replaceChildren()
+  $('reader').hidden = true
+  $('shelf').hidden = false
+}
+
+let busy = false
+async function task(action) {
+  if (busy) return
+  busy = true
+  try { await action() }
+  catch (error) {
+    console.error(error)
+    status(error instanceof DOMException
+      ? 'Не удалось открыть файл или сохранить данные. Проверь доступное место в Safari.'
+      : 'Не удалось завершить действие. ' + (error.message || 'Проверь формат файла и отсутствие DRM.'))
+  } finally { busy = false }
+}
+
+async function navigate(action) {
+  const current = active
+  if (!current || current.navigating || busy) return
+  current.navigating = true
+  try { await action() }
+  catch (error) {
+    console.error(error)
+    $('position').value = 'Не удалось перейти'
+  } finally { current.navigating = false }
+}
+
+function keys(event) {
+  if (!active || $('toc').open || $('prefs').open || event.altKey || event.ctrlKey || event.metaKey) return
+  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+    event.preventDefault()
+    void navigate(() => event.key === 'ArrowLeft' ? active.view.goLeft() : active.view.goRight())
+  }
+}
+
+async function exportProgress() {
+  const data = { version: 1, progress: await all('progress') }
+  const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = 'chitalka-progress.json'
+  link.click()
+  setTimeout(() => URL.revokeObjectURL(url), 30000)
+}
+
+async function importProgress(file) {
+  if (file.size > 2 * 1024 * 1024) throw new Error('Файл прогресса слишком большой.')
+  const data = JSON.parse(await file.text())
+  if (data?.version !== 1 || !Array.isArray(data.progress) || data.progress.some(item =>
+    !item || typeof item.id !== 'string' || !/^[a-f0-9]{64}$/.test(item.id) ||
+    typeof item.cfi !== 'string' || !item.cfi.startsWith('epubcfi(') || !item.cfi.endsWith(')') ||
+    !Number.isFinite(item.fraction) || !Number.isFinite(item.updatedAt))) {
+    throw new Error('Выбери JSON, экспортированный из Читалки.')
+  }
+  await saveProgress(data.progress)
+  await renderShelf()
+  status('Прогресс импортирован. При совпадении книги сохранена более свежая позиция.')
+}
+
+$('add').onclick = () => $('file').click()
+$('file').onchange = event => {
+  const file = event.target.files[0]
+  event.target.value = ''
+  if (file) void task(() => importBook(file))
+}
+$('back').onclick = () => task(async () => {
+  if (active?.navigating) return
+  closeBook()
+  await renderShelf()
+  $('add').focus()
+})
+$('prev').onclick = () => navigate(() => active.view.goLeft())
+$('next').onclick = () => navigate(() => active.view.goRight())
+$('contents').onclick = () => $('toc').showModal()
+$('settings').onclick = () => $('prefs').showModal()
+$('size').onchange = updatePrefs
+$('size').oninput = () => { $('size-value').value = $('size').value + ' px' }
+$('theme').onchange = updatePrefs
+$('export').onclick = () => task(exportProgress)
+$('import').onclick = () => $('progress-file').click()
+$('progress-file').onchange = event => {
+  const file = event.target.files[0]
+  event.target.value = ''
+  if (file) void task(() => importProgress(file))
+}
+document.addEventListener('keydown', keys)
+applyPrefs()
+void task(renderShelf)

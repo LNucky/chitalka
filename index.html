@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' blob:; img-src 'self' blob: data:; font-src 'self' blob: data:; frame-src blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="theme-color" content="#f7f4eb">
+<title>Читалка</title>
+<link rel="stylesheet" href="./style.css">
+<script type="module" src="./app.js"></script>
+</head>
+<body>
+<main id="shelf">
+  <header class="masthead"><span>ЛИЧНАЯ БИБЛИОТЕКА</span><h1>Читалка</h1><p>Открой книгу и продолжи с того же места.</p></header>
+  <button id="add" class="primary">＋ Добавить книгу</button>
+  <input id="file" type="file" accept=".epub,.fb2,.fb2.zip,.zip,application/epub+zip,application/x-fictionbook+xml,application/zip" hidden>
+  <p id="status" role="status" aria-live="polite"></p>
+  <section aria-labelledby="shelf-heading">
+    <h2 id="shelf-heading">Мои книги</h2>
+    <p id="empty">Здесь появятся книги из «Файлов». Поддерживаются EPUB, FB2 и FB2.ZIP.</p>
+    <ul id="books"></ul>
+  </section>
+  <details class="transfer">
+    <summary>Перенести прогресс</summary>
+    <p>Добавь на втором устройстве тот же файл книги и импортируй JSON. Книги в экспорт не входят.</p>
+    <button id="export">Скачать JSON</button>
+    <button id="import">Импортировать JSON</button>
+    <input id="progress-file" type="file" accept=".json,application/json" hidden>
+  </details>
+</main>
+<section id="reader" aria-label="Читалка" hidden>
+  <header class="toolbar">
+    <button id="back" aria-label="К книгам">← Полка</button>
+    <span id="title"></span>
+    <button id="contents" aria-label="Оглавление">☰</button>
+    <button id="settings" aria-label="Настройки текста">Аа</button>
+  </header>
+  <div id="pages"></div>
+  <footer class="toolbar">
+    <button id="prev" aria-label="Предыдущая страница">←</button>
+    <output id="position"></output>
+    <button id="next" aria-label="Следующая страница">→</button>
+  </footer>
+</section>
+<dialog id="toc"><form method="dialog"><header><h2>Оглавление</h2><button aria-label="Закрыть">×</button></header></form><nav id="chapters" aria-label="Главы"></nav></dialog>
+<dialog id="prefs"><form method="dialog"><header><h2>Настройки текста</h2><button aria-label="Закрыть">×</button></header></form>
+  <label for="size">Размер текста <output id="size-value"></output></label>
+  <input id="size" type="range" min="16" max="34" step="1">
+  <label for="theme">Тема</label>
+  <select id="theme"><option value="paper">Бумага</option><option value="light">Светлая</option><option value="dark">Тёмная</option></select>
+</dialog>
+</body>
+</html>
