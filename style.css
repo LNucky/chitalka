@@ -70,11 +70,9 @@ summary{cursor:pointer}
   flex:none;
   min-width:44px;
   padding:0 .55rem;
-  border-color:transparent;
-  background:transparent;
   color:var(--accent);
 }
-.toolbar button:active{background:var(--card);border-color:var(--line)}
+.toolbar button:active{background:var(--bg)}
 #back{font-size:.88rem;padding-inline:.15rem .45rem}
 #back:focus-visible{outline:none}
 #back:focus-visible span{text-decoration:underline;text-underline-offset:.2em}
