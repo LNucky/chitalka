@@ -11,8 +11,15 @@
 </head>
 <body>
 <main id="shelf">
-  <header class="masthead"><span>ЛИЧНАЯ БИБЛИОТЕКА</span><h1>Читалка</h1><p>Открой книгу и продолжи с того же места.</p></header>
-  <button id="add" class="primary">＋ Добавить книгу</button>
+  <header class="masthead">
+    <span>Личная библиотека</span>
+    <h1>Читалка</h1>
+    <p>Открой книгу и продолжи с того же места.</p>
+  </header>
+  <button id="add" class="primary">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+    Добавить книгу
+  </button>
   <input id="file" type="file" accept=".epub,.fb2,.fb2.zip,.zip,application/epub+zip,application/x-fictionbook+xml,application/zip" hidden>
   <p id="status" role="status" aria-live="polite"></p>
   <section aria-labelledby="shelf-heading">
@@ -30,14 +37,21 @@
 </main>
 <section id="reader" aria-label="Читалка" hidden>
   <header class="toolbar">
-    <button id="back" aria-label="К книгам">← Полка</button>
+    <button id="back" aria-label="К книгам">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg>
+      Полка
+    </button>
     <span id="title"></span>
-    <button id="contents" aria-label="Оглавление">☰</button>
+    <button id="contents" aria-label="Оглавление">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h10M9 12h10M9 18h10M5 6h.01M5 12h.01M5 18h.01"/></svg>
+    </button>
     <button id="settings" aria-label="Настройки текста">Аа</button>
   </header>
   <div id="pages"></div>
   <footer class="toolbar">
-    <button id="prev" aria-label="Предыдущая страница">←</button>
+    <button id="prev" aria-label="Предыдущая страница">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg>
+    </button>
     <div class="reader-progress">
       <button id="return-link" hidden>↩ К месту в тексте</button>
       <div id="reading-progress">
@@ -46,7 +60,9 @@
       </div>
       <span id="milestone" role="status"></span>
     </div>
-    <button id="next" aria-label="Следующая страница">→</button>
+    <button id="next" aria-label="Следующая страница">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 6 6 6-6 6"/></svg>
+    </button>
   </footer>
 </section>
 <dialog id="toc"><form method="dialog"><header><h2>Оглавление</h2><button aria-label="Закрыть">×</button></header></form><nav id="chapters" aria-label="Главы"></nav></dialog>

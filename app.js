@@ -227,7 +227,11 @@ async function openBook(record, parsed) {
     view.renderer.setAttribute('max-column-count', '1')
     applyPrefs()
     view.addEventListener('external-link', event => event.preventDefault())
-    view.addEventListener('load', ({ detail }) => detail.doc.addEventListener('keydown', keys))
+    view.addEventListener('load', ({ detail: { doc } }) => {
+      doc.documentElement.style.setProperty('overscroll-behavior-y', 'none', 'important')
+      doc.body?.style.setProperty('overscroll-behavior-y', 'none', 'important')
+      doc.addEventListener('keydown', keys)
+    })
     view.addEventListener('link', event => followBookLink(reader, event))
     view.addEventListener('relocate', ({ detail }) => updateReadingProgress(reader, detail))
     $('chapters').replaceChildren()
