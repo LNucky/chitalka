@@ -6,8 +6,8 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' blob:; img-src 'self' blob: data:; font-src 'self' blob: data:; frame-src blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="theme-color" content="#f7f4eb">
 <title>Читалка</title>
-<link rel="stylesheet" href="./style.css?v=8889fd56">
-<script type="module" src="./app.js"></script>
+<link rel="stylesheet" href="./style.css?v=sentences-1">
+<script type="module" src="./app.js?v=sentences-1"></script>
 </head>
 <body>
 <main id="shelf">
@@ -47,7 +47,13 @@
     </button>
     <button id="settings" aria-label="Настройки текста">Аа</button>
   </header>
-  <div id="pages"></div>
+  <div id="reading-surface">
+    <div id="pages"></div>
+    <div id="sentence" hidden>
+      <p id="sentence-text" aria-live="polite"></p>
+      <small>Тап по тексту — следующее предложение</small>
+    </div>
+  </div>
   <footer class="toolbar">
     <button id="prev" aria-label="Предыдущая страница">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg>
@@ -67,6 +73,8 @@
 </section>
 <dialog id="toc"><form method="dialog"><header><h2>Оглавление</h2><button aria-label="Закрыть">×</button></header></form><nav id="chapters" aria-label="Главы"></nav></dialog>
 <dialog id="prefs"><form method="dialog"><header><h2>Настройки текста</h2><button aria-label="Закрыть">×</button></header></form>
+  <label for="reading-mode">Режим чтения</label>
+  <select id="reading-mode"><option value="sentence">По предложению</option><option value="page">По страницам</option></select>
   <label for="size">Размер текста <output id="size-value"></output></label>
   <input id="size" type="range" min="16" max="34" step="1">
   <label for="theme">Тема</label>

@@ -99,3 +99,21 @@ dialog h2{margin:0}
   #milestone:not(:empty){animation:milestone-in .25s ease-out}
 }
 @keyframes milestone-in{from{opacity:0;transform:translateY(4px)}}
+
+#reading-surface{min-height:0;min-width:0}
+#sentence{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:safe center;
+  height:100%;
+  overflow:auto;
+  overscroll-behavior-y:contain;
+  padding:1.5rem clamp(1.25rem,6vw,3rem);
+  gap:1rem;
+  cursor:pointer;
+  touch-action:manipulation;
+}
+#sentence-text{width:min(100%,32rem);margin:0;color:var(--ink);font-family:Georgia,serif;line-height:1.55;overflow-wrap:anywhere;white-space:pre-line}
+#sentence-text a{color:var(--accent)}
+#sentence small{color:var(--muted);text-align:center}

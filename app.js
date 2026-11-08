@@ -1,13 +1,15 @@
+import { SentenceReader } from './sentences.js'
 import { makeBook } from './vendor/foliate/view.js'
 import { all, get, put, removeBook, saveProgress } from './storage.js'
 
 const $ = id => document.getElementById(id)
 const themes = { paper: ['#f7f4eb', '#242a25'], light: ['#ffffff', '#242a25'], dark: ['#191d1a', '#ecefe9'] }
-let prefs = { size: 21, theme: 'paper' }
+let prefs = { size: 21, theme: 'paper', mode: 'sentence' }
 try {
   const stored = JSON.parse(localStorage.getItem('chitalka-prefs') ?? '{}')
   if (stored && Number.isInteger(stored.size) && stored.size >= 16 && stored.size <= 34) prefs.size = stored.size
   if (stored && Object.hasOwn(themes, stored.theme)) prefs.theme = stored.theme
+  if (stored?.mode === 'page') prefs.mode = 'page'
 } catch { /* Use defaults if preferences are unavailable. */ }
 
 let active
@@ -23,6 +25,8 @@ function applyPrefs() {
   $('size').value = prefs.size
   $('size-value').value = prefs.size + ' px'
   $('theme').value = prefs.theme
+  $('reading-mode').value = active && !active.sentenceMode ? 'page' : prefs.mode
+  $('sentence-text').style.fontSize = prefs.size + 'px'
   active?.view.renderer?.setStyles?.(`
     :root { color-scheme: ${prefs.theme === 'dark' ? 'dark' : 'light'}; }
     html, body { background: ${background} !important; color: ${color} !important; }
@@ -32,10 +36,15 @@ function applyPrefs() {
   `)
 }
 
-function updatePrefs() {
-  prefs = { size: Number($('size').value), theme: $('theme').value }
+function savePrefs() {
   try { localStorage.setItem('chitalka-prefs', JSON.stringify(prefs)) } catch { /* Reading still works. */ }
   applyPrefs()
+}
+
+function updatePrefs() {
+  prefs.size = Number($('size').value)
+  prefs.theme = $('theme').value
+  savePrefs()
 }
 
 async function renderShelf() {
@@ -136,7 +145,7 @@ function showChapters(items, depth = 0) {
         $('toc').close()
         void navigate(() => {
           setLinkReturn(active, null)
-          return active.view.goTo(item.href)
+          return goToReadingPosition(active, item.href)
         })
       }
       $('chapters').append(button)
@@ -155,7 +164,7 @@ async function returnToText(reader) {
   const origin = reader.linkReturn
   if (!origin) return
   setLinkReturn(reader, null)
-  if (!await reader.view.goTo(origin.cfi)) setLinkReturn(reader, origin)
+  if (!await goToReadingPosition(reader, origin.cfi)) setLinkReturn(reader, origin)
 }
 
 function followBookLink(reader, event) {
@@ -170,7 +179,7 @@ function followBookLink(reader, event) {
     void navigate(() => returnToText(reader))
     return
   }
-  const location = view.lastLocation
+  const location = reader.sentenceMode ? reader.sentences.location : view.lastLocation
   if (!Number.isInteger(target?.index) || !reader.book.sections[target.index] || !location?.cfi) return
   event.preventDefault()
   void navigate(async () => {
@@ -180,7 +189,7 @@ function followBookLink(reader, event) {
       cfi: location.cfi, section: location.section?.current, anchorId: a.id, isNote,
     })
     $('milestone').textContent = ''
-    if (!await view.goTo(href)) setLinkReturn(reader, linkReturn)
+    if (!await goToReadingPosition(reader, href)) setLinkReturn(reader, linkReturn)
   })
 }
 
@@ -205,6 +214,28 @@ function updateReadingProgress(reader, detail) {
   })
 }
 
+async function goToReadingPosition(reader, target) {
+  if (!reader.sentenceMode) return reader.view.goTo(target)
+  const location = await reader.sentences.goTo(target)
+  if (location) updateReadingProgress(reader, location)
+  return location
+}
+
+async function showReadingMode(reader, mode, target) {
+  reader.sentenceMode = mode === 'sentence' && Boolean(reader.sentences)
+  $('sentence').hidden = !reader.sentenceMode
+  $('pages').hidden = reader.sentenceMode
+  $('prev').setAttribute('aria-label', reader.sentenceMode ? 'Предыдущее предложение' : 'Предыдущая страница')
+  $('next').setAttribute('aria-label', reader.sentenceMode ? 'Следующее предложение' : 'Следующая страница')
+  if (reader.sentenceMode) {
+    const first = reader.book.sections.findIndex(section => section.linear !== 'no')
+    if (await goToReadingPosition(reader, target ?? first)) return true
+    return showReadingMode(reader, 'page', target)
+  }
+  await reader.view.init({ lastLocation: target })
+  return mode === 'page'
+}
+
 async function openBook(record, parsed) {
   const previous = await get('progress', record.id)
   const book = parsed ?? await parseBook(new File([record.blob], record.name))
@@ -218,6 +249,8 @@ async function openBook(record, parsed) {
   $('position').value = 'Открываю…'
   $('shelf').hidden = true
   $('reader').hidden = false
+  $('sentence').hidden = true
+  $('pages').hidden = false
   $('pages').replaceChildren(view)
   try {
     book.transformTarget?.addEventListener('load', event => {
@@ -225,6 +258,10 @@ async function openBook(record, parsed) {
     })
     await view.open(book)
     view.renderer.setAttribute('max-column-count', '1')
+    if (typeof Intl.Segmenter === 'function' && !view.isFixedLayout && book.sections.some(section => section.createDocument)) {
+      reader.sentences = new SentenceReader(view, $('sentence-text'))
+    }
+    $('reading-mode').disabled = !reader.sentences
     applyPrefs()
     view.addEventListener('external-link', event => event.preventDefault())
     view.addEventListener('load', ({ detail: { doc } }) => {
@@ -233,11 +270,14 @@ async function openBook(record, parsed) {
       doc.addEventListener('keydown', keys)
     })
     view.addEventListener('link', event => followBookLink(reader, event))
-    view.addEventListener('relocate', ({ detail }) => updateReadingProgress(reader, detail))
+    view.addEventListener('relocate', ({ detail }) => {
+      if (!reader.sentenceMode) updateReadingProgress(reader, detail)
+    })
     $('chapters').replaceChildren()
     showChapters(book.toc)
     $('contents').disabled = !$('chapters').children.length
-    await view.init({ lastLocation: previous?.cfi })
+    await showReadingMode(reader, prefs.mode, previous?.cfi)
+    applyPrefs()
     active.navigating = false
     status('')
     $('reader').focus({ preventScroll: true })
@@ -254,6 +294,7 @@ function closeBook() {
   active?.book.destroy?.()
   active = null
   $('pages').replaceChildren()
+  $('sentence-text').replaceChildren()
   $('reader').hidden = true
   $('shelf').hidden = false
 }
@@ -287,7 +328,10 @@ function turnPage(direction) {
   return navigate(async () => {
     reader.turning = true
     try {
-      await (direction === 'left' ? reader.view.goLeft() : reader.view.goRight())
+      if (reader.sentenceMode) {
+        const location = await reader.sentences.step(direction === 'left' ? -1 : 1)
+        if (location) updateReadingProgress(reader, location)
+      } else await (direction === 'left' ? reader.view.goLeft() : reader.view.goRight())
     } finally {
       reader.turning = false
     }
@@ -347,6 +391,19 @@ $('settings').onclick = () => $('prefs').showModal()
 $('size').onchange = updatePrefs
 $('size').oninput = () => { $('size-value').value = $('size').value + ' px' }
 $('theme').onchange = updatePrefs
+$('sentence').onclick = () => {
+  if (active?.sentenceMode && !window.getSelection()?.toString()) void turnPage('right')
+}
+$('reading-mode').onchange = () => {
+  void navigate(async () => {
+    const reader = active
+    const target = (reader.sentenceMode ? reader.sentences.location : reader.view.lastLocation)?.cfi
+    if (await showReadingMode(reader, $('reading-mode').value, target)) {
+      prefs.mode = reader.sentenceMode ? 'sentence' : 'page'
+    }
+    savePrefs()
+  })
+}
 $('export').onclick = () => task(exportProgress)
 $('import').onclick = () => $('progress-file').click()
 $('progress-file').onchange = event => {

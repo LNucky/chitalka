@@ -951,6 +951,7 @@ export class Paginator extends HTMLElement {
             this.start - size, this.end - size, this.#getRectMapper())
     }
     #afterScroll(reason) {
+        if (!this.#view?.document?.body) return
         const range = this.#getVisibleRange()
         this.#lastVisibleRange = range
         // don't set new anchor if relocation was to scroll to anchor
