@@ -116,5 +116,3 @@ dialog h2{margin:0}
 }
 #sentence-text{width:min(100%,32rem);margin:0;color:var(--ink);font-family:Georgia,serif;line-height:1.55;overflow-wrap:anywhere;white-space:pre-line}
 #sentence-text a{color:var(--accent)}
-#sentence-hint{color:var(--muted);text-align:center;visibility:hidden}
-#sentence-hint.is-visible{visibility:visible}
