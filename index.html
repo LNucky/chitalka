@@ -6,8 +6,8 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' blob:; img-src 'self' blob: data:; font-src 'self' blob: data:; frame-src blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="theme-color" content="#f7f4eb">
 <title>Читалка</title>
-<link rel="stylesheet" href="./style.css?v=sentences-1">
-<script type="module" src="./app.js?v=sentences-1"></script>
+<link rel="stylesheet" href="./style.css?v=sentences-2">
+<script type="module" src="./app.js?v=sentences-2"></script>
 </head>
 <body>
 <main id="shelf">
@@ -51,7 +51,7 @@
     <div id="pages"></div>
     <div id="sentence" hidden>
       <p id="sentence-text" aria-live="polite"></p>
-      <small>Тап по тексту — следующее предложение</small>
+      <small id="sentence-hint">Тап по тексту — следующее предложение</small>
     </div>
   </div>
   <footer class="toolbar">

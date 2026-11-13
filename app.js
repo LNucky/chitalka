@@ -13,10 +13,19 @@ try {
 } catch { /* Use defaults if preferences are unavailable. */ }
 
 let active
+let sentenceHintTimer
 const status = message => { $('status').textContent = message }
 const percent = fraction => Math.floor(100 * Math.min(1, Math.max(0, fraction)))
 const text = value => typeof value === 'string' ? value : Object.values(value ?? {}).find(v => typeof v === 'string')
 const authors = value => [value].flat().map(v => text(v?.name ?? v)).filter(Boolean).join(', ')
+
+function resetSentenceHint() {
+  clearTimeout(sentenceHintTimer)
+  const hint = $('sentence-hint')
+  hint.classList.remove('is-visible')
+  if (!active?.sentenceMode || active.navigating || document.hidden || $('toc').open || $('prefs').open) return
+  sentenceHintTimer = setTimeout(() => hint.classList.add('is-visible'), 7000)
+}
 
 function applyPrefs() {
   const [background, color] = themes[prefs.theme]
@@ -279,6 +288,7 @@ async function openBook(record, parsed) {
     await showReadingMode(reader, prefs.mode, previous?.cfi)
     applyPrefs()
     active.navigating = false
+    resetSentenceHint()
     status('')
     $('reader').focus({ preventScroll: true })
   } catch (error) {
@@ -293,6 +303,7 @@ function closeBook() {
   active?.view.close()
   active?.book.destroy?.()
   active = null
+  resetSentenceHint()
   $('pages').replaceChildren()
   $('sentence-text').replaceChildren()
   $('reader').hidden = true
@@ -316,11 +327,15 @@ async function navigate(action) {
   const current = active
   if (!current || current.navigating || busy) return
   current.navigating = true
+  resetSentenceHint()
   try { await action() }
   catch (error) {
     console.error(error)
     $('position').value = 'Не удалось перейти'
-  } finally { current.navigating = false }
+  } finally {
+    current.navigating = false
+    resetSentenceHint()
+  }
 }
 
 function turnPage(direction) {
@@ -386,14 +401,25 @@ $('back').onclick = () => task(async () => {
 $('prev').onclick = () => turnPage('left')
 $('next').onclick = () => turnPage('right')
 $('return-link').onclick = () => navigate(() => returnToText(active))
-$('contents').onclick = () => $('toc').showModal()
-$('settings').onclick = () => $('prefs').showModal()
+$('contents').onclick = () => {
+  $('toc').showModal()
+  resetSentenceHint()
+}
+$('settings').onclick = () => {
+  $('prefs').showModal()
+  resetSentenceHint()
+}
+$('toc').addEventListener('close', resetSentenceHint)
+$('prefs').addEventListener('close', resetSentenceHint)
 $('size').onchange = updatePrefs
 $('size').oninput = () => { $('size-value').value = $('size').value + ' px' }
 $('theme').onchange = updatePrefs
 $('sentence').onclick = () => {
   if (active?.sentenceMode && !window.getSelection()?.toString()) void turnPage('right')
 }
+$('sentence').addEventListener('pointerdown', resetSentenceHint)
+$('sentence').addEventListener('scroll', resetSentenceHint, { passive: true })
+document.addEventListener('visibilitychange', resetSentenceHint)
 $('reading-mode').onchange = () => {
   void navigate(async () => {
     const reader = active
